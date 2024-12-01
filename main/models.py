@@ -92,6 +92,7 @@ class Transactionhistory(models.Model):
     transactiontype = models.CharField(db_column='TransactionType', max_length=4)  # Field name made lowercase.
     quantity = models.IntegerField(db_column='Quantity')  # Field name made lowercase.
     date = models.DateTimeField(db_column='Date', blank=True, null=True)  # Field name made lowercase.
+    shop = models.ForeignKey('Shop', models.DO_NOTHING, db_column='Shop')  # Field name made lowercase.
 
     class Meta:
         managed = False

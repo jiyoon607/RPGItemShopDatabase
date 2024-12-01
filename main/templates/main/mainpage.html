@@ -1,29 +1,4 @@
 {% load static %}
-<!--<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>게임 화면</title>
-    <link rel="stylesheet" type="text/css" href="{% static 'css/project.css'%}">
-</head>
-<body>
-    <div class="container">
-        <div class="left">
-            <div class="player">
-                <h1>플레이어</h1>
-            </div>
-            <div class="overview">
-                <h1>그림</h1>
-                <img id="img-overview" src="{% static 'images/overview.png'%}" alt="게임 플로우">
-            </div>
-        </div>
-        <div class="shop">
-            <h1>상점</h1>
-        </div>
-    </div>
-</body>
-</html>-->
 
 <!DOCTYPE html>
 <html lang="ko">
@@ -45,6 +20,7 @@
 
 <div class="container">
     <div class="box box-1">
+        <div class="left-top-box">
         <div class="box-1-box">
         <h4>플레이어</h4>
         {% if player %}
@@ -62,15 +38,11 @@
                 <!-- 체력 -->
                 <p>
                 체력: {{ player.health }} 
-                <button type="submit" name="action" value="health_inc">+</button>
-                <button type="submit" name="action" value="health_dec">-</button>
                 </p>
                 
                 <!-- 레벨 -->
                 <p>
                 레벨: {{ player.level }} 
-                <button type="submit" name="action" value="level_inc">+</button>
-                <button type="submit" name="action" value="level_dec">-</button>
                 </p>
                 
                 <!-- 보유 골드 -->
@@ -85,7 +57,7 @@
         <form action="{% url 'main:login' %}" method="POST">
             {% csrf_token %}
             <div id="line"></div>
-            <h3>기존 플레이어 로그인</h3>
+            <h4>기존 플레이어 로그인</h4>
             <div class="login">
                 닉네임:
                 <input id="ID" type="text" name="nickname" placeholder="닉네임을 입력하세요">
@@ -100,7 +72,7 @@
         <form action="{% url 'main:signin' %}" method="POST">
             {% csrf_token %}
             <div id="line"></div>
-            <h3>새 플레이어 생성</h3>
+            <h4>새 플레이어 생성</h4>
             <div class="login">
                 닉네임:
                 <input id="ID" type="text" name="nickname" placeholder="닉네임을 입력하세요">
@@ -122,15 +94,74 @@
                         <th>Name</th>
                         <th>Type</th>
                         <th>Effect</th>
+                        <th>Quantity</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for item in inventory_items %}
+                    {% for inventory_item in inventory_items %}
                     <tr>
-                        <td>{{ item.id }}</td>
-                        <td>{{ item.name }}</td>
-                        <td>{{ item.type }}</td>
-                        <td>{{ item.effect }}</td>
+                        <td>{{ inventory_item.item.id }}</td>
+                        <td>{{ inventory_item.item.name }}</td>
+                        <td>{{ inventory_item.item.type }}</td>
+                        <td>{{ inventory_item.item.effect }}</td>
+                        <td>{{ inventory_item.quantity }}</td>
+
+                        <!-- Shop Dropdown -->
+                        <td>
+                            <!-- 상점 선택 -->
+                            <select class="shop-select" data-item-id="{{ inventory_item.item.id }}">
+                                <option value="0">상점 선택</option>
+                                {% for shop in shop_infos %}
+                                <option value="{{ shop.shop.id }}">{{ shop.shop.name }}</option>
+                                {% endfor %}
+                            </select>
+                            
+                            <!-- 판매 가격 표시 -->
+                            <form method="POST" action="{% url 'main:sell-item' %}" style="margin-top: 10px;">
+                            <div id="sell-price-{{ inventory_item.item.id }}" style="margin-top: 10px;">판매 가격: -</div>
+                            <!-- 판매할 수량 입력 -->
+                            <input type="number" id="quantity-{{ inventory_item.item.id }}" min="1" max="{{ inventory_item.quantity }}" value="1" style="margin-top: 10px;">
+
+                            <!-- 판매 버튼 -->
+                                {% csrf_token %}
+                                <input type="hidden" name="player_id" value="{{ player.id }}">
+                                <input type="hidden" name="item_id" value="{{ inventory_item.item.id }}">
+                                <input type="hidden" name="quantity" id="quantity-input-{{ inventory_item.item.id }}" value="1">
+                                <input type="hidden" name="shop_id" id="shop-id-{{ inventory_item.item.id }}">
+                                <button type="submit">판매</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>            
+        </div>
+        </div>
+        <div class="box box-3">
+            <h4>상점 거래 기록</h4>
+            <table border="1">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Player</th>
+                        <th>Shop</th>
+                        <th>Item</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>DateTime</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transactionhistory in transactionhistories %}
+                    <tr>
+                        <td>{{ transactionhistory.id }}</td>
+                        <td>{{ transactionhistory.player.player.nickname }}</td>
+                        <td>{{ transactionhistory.shop.name }}</td>
+                        <td>{{ transactionhistory.item.name }}</td>
+                        <td>{{ transactionhistory.transactiontype }}</td>
+                        <td>{{ transactionhistory.quantity }}</td>
+                        <td>{{ transactionhistory.date }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -139,45 +170,102 @@
     </div>
     <div class="box box-2">
         <h4>상점</h4>
-        <h4>상점 위치: {{ shop.name }}  | 상점 위치: {{ shop.location }}</h4>
+        {% for shop in shop_infos %}
+        <h4>상점 이름: {{ shop.shop.name }}  | 상점 위치: {{ shop.shop.location }}</h4>
         <form method="POST" action="{% url 'main:buy-item' %}">
-        {% csrf_token %}
-        <table border="1">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Effect</th>
-                    <th>StockQuantity</th>
-                    <th>Price</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for shop_item in shop_item_managements %}
-                <tr>
-                    <td>{{ shop_item.item.id }}</td>
-                    <td>{{ shop_item.item.name }}</td>
-                    <td>{{ shop_item.item.type }}</td>
-                    <td>{{ shop_item.item.effect }}</td>
-                    <td>{{ shop_item.stockquantity }}</td>
-                    <td>{{ shop_item.price }}</td>
-                    <td>
-                        <button type="submit" name="item_id" value="{{ shop_item.item.id }}">구매</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+            {% csrf_token %}
+            <table border="1">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Effect</th>
+                        <th>StockQuantity</th>
+                        <th>Price</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for shop_item in shop.shop_item_managements %}
+                    <tr>
+                        <td>{{ shop_item.item.id }}</td>
+                        <td>{{ shop_item.item.name }}</td>
+                        <td>{{ shop_item.item.type }}</td>
+                        <td>{{ shop_item.item.effect }}</td>
+                        <td>{{ shop_item.stockquantity }}</td>
+                        <td>{{ shop_item.price }}</td>
+                        <td>
+                            <!-- 수량 입력 -->
+                            <input type="number" name="quantity_{{ shop_item.item.id }}" min="1" max="{{ shop_item.stockquantity }}" value="1">
+                            <!-- 아이템 ID를 전송 -->
+                            <button type="submit" name="item_id" value="{{ shop_item.item.id }}">구매</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </form>
-    </div>
-    <div class="box box-3">
-        <h4>상점 거래 기록</h4>
-    </div>
-    <div class="box box-4">
-        <h4>관리자</h4>
+        {% endfor %}
     </div>
 </div>
 
 <!--<img class="overview" src="{% static 'images/overview.png'%}" alt="게임 플로우">-->
 </body>
+
+<form id="price-form">
+    <select name="shop_id" id="shop-select">
+        <option value="">상점 선택</option>
+        {% for shop in shops %}
+        <option value="{{ shop.id }}">{{ shop.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="hidden" id="item-id" value="{{ inventory_item.item.id }}">
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const shopSelects = document.querySelectorAll(".shop-select");
+
+    shopSelects.forEach(select => {
+        select.addEventListener("change", function () {
+            const itemId = this.dataset.itemId;
+            const shopId = this.value;
+            const sellPriceElement = document.getElementById(`sell-price-${itemId}`);
+
+            if (shopId) {
+                fetch(`/get-sell-price/?item_id=${itemId}&shop_id=${shopId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.shop_price) {
+                            sellPriceElement.textContent = `판매 가격: ${data.shop_price}원`;
+                            document.getElementById(`shop-id-${itemId}`).value = shopId; // 판매 폼에 shop_id 추가
+                        } else {
+                            sellPriceElement.textContent = "판매 가격: -";
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error fetching sell price:", error);
+                        sellPriceElement.textContent = "판매 가격: 오류";
+                    });
+            } else {
+                sellPriceElement.textContent = "판매 가격: -";
+                sellPriceInput.value = 0;
+            }
+            });
+        });
+
+        // 수량 입력시 hidden 필드의 quantity 값 동적으로 변경
+        const quantityInputs = document.querySelectorAll('[id^="quantity-"]');
+        
+        quantityInputs.forEach(input => {
+            input.addEventListener('input', function() {
+                const itemId = this.id.split('-')[1]; // 아이템 ID 추출
+                const quantity = this.value;
+                const hiddenQuantityInput = document.getElementById(`quantity-input-${itemId}`);
+                hiddenQuantityInput.value = quantity; // hidden 필드에 선택된 수량을 설정
+            });
+        });
+    });
+</script>
+

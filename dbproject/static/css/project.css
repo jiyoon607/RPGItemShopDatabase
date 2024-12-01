@@ -11,7 +11,6 @@ html, body {
 
 .box {
     width: 50%; /* 각 영역이 50%씩 차지 */
-    height: 50%; /* 각 영역이 50%씩 차지 */
     border: 2px solid black; /* 구분선 */
     box-sizing: border-box; /* 테두리 크기 포함 */
     font-size: 20px;
@@ -20,37 +19,90 @@ html, body {
 
 /* 추가 스타일 */
 .box-1 {
-    display: flex;
+    width: 50%;
+    height: 100%;
     background-color: #f0f0f0;
 }
 
+.box-1:first-child {
+    background-color: #f0f0f0;
+}
+.box-1:last-child {
+    background-color: #f0f0f0;
+}
+.left-top-box {
+    width: 100%;
+    height: 50%;
+    display: flex;
+    background-color: #f0f0f0;
+}
 .box-1-box {
-    width: 50%; /* 각 영역이 50%씩 차지 */
-    height: 100%; /* 각 영역이 50%씩 차지 */
+    height: 100%;
     border: 2px solid black; /* 구분선 */
     box-sizing: border-box; /* 테두리 크기 포함 */
     font-size: 20px;
     text-align: left;
     padding-left: 20px;
+    padding-right: 20px;
     background-color: #f0f0f0;
+}
+
+.box-1-box:first-child {
+    width: 30%; /* 첫 번째 박스는 30% */
+    font-size: 18px;
+}
+
+.box-1-box:last-child {
+    width: 70%; /* 두 번째 박스는 70% */
 }
 
 .box-2 {
     padding-left: 20px;
+    padding-right: 20px;
+    height: 100%;
     background-color: #e0e0e0;
 }
 
 .box-3 {
+    width: 100%;
+    height: 50%;
     padding-left: 20px;
+    padding-right: 20px;
     background-color: #d0d0d0;
-}
-
-.box-4 {
-    padding-left: 20px;
-    background-color: #c0c0c0;
 }
 
 .overview {
     width: 87%;  /* 너비를 50%로 줄임 */
     height: auto; /* 비율을 유지하면서 높이 자동 조정 */
+}
+button {
+    margin-top: 20px;
+    padding: 1px 2px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+button:hover {
+    background-color: #0056b3;
+}
+/* 표 스타일 */
+table {
+    width: 100%;
+    border-collapse: collapse; /* 테두리가 겹치지 않도록 합침 */
+    margin-top: 20px;
+}
+
+th, td {
+    text-align: left;
+    border: 1px solid black; /* 검정색 테두리 */
+}
+
+th {
+    font-weight: bold;
+}
+
+tr:hover {
+    background-color: #f1f1f1; /* 행에 마우스를 올렸을 때 배경 색상 */
 }
