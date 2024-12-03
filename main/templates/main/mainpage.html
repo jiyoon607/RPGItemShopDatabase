@@ -109,21 +109,21 @@
 
                         <!-- Shop Dropdown -->
                         <td>
-                            <!-- 상점 선택 -->
                             <select class="shop-select" data-item-id="{{ inventory_item.item.id }}">
                                 <option value="0">상점 선택</option>
-                                {% for shop in shop_infos %}
-                                <option value="{{ shop.shop.id }}">{{ shop.shop.name }}</option>
+                                {% for data in inventory_sell_data %}
+                                    {% if data.inventory_item.item.id == inventory_item.item.id and data.shop_price %}
+                                        <option value="{{ data.shop.id }}">
+                                            {{ data.shop.name }}
+                                        </option>
+                                    {% endif %}
                                 {% endfor %}
                             </select>
-                            
+
                             <!-- 판매 가격 표시 -->
                             <form method="POST" action="{% url 'main:sell-item' %}" style="margin-top: 10px;">
-                            <div id="sell-price-{{ inventory_item.item.id }}" style="margin-top: 10px;">판매 가격: -</div>
-                            <!-- 판매할 수량 입력 -->
-                            <input type="number" id="quantity-{{ inventory_item.item.id }}" min="1" max="{{ inventory_item.quantity }}" value="1" style="margin-top: 10px;">
-
-                            <!-- 판매 버튼 -->
+                                <div id="sell-price-{{ inventory_item.item.id }}" style="margin-top: 10px;">판매 가격: -</div>
+                                <input type="number" id="quantity-{{ inventory_item.item.id }}" min="1" max="{{ inventory_item.quantity }}" value="1" style="margin-top: 10px;">
                                 {% csrf_token %}
                                 <input type="hidden" name="player_id" value="{{ player.id }}">
                                 <input type="hidden" name="item_id" value="{{ inventory_item.item.id }}">
@@ -135,7 +135,7 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-            </table>            
+            </table>
         </div>
         </div>
         <div class="box box-3">
@@ -196,6 +196,7 @@
                         <td>{{ shop_item.stockquantity }}</td>
                         <td>{{ shop_item.price }}</td>
                         <td>
+                            <input type="hidden" name="shop_id" value="{{ shop.shop.id }}">
                             <!-- 수량 입력 -->
                             <input type="number" name="quantity_{{ shop_item.item.id }}" min="1" max="{{ shop_item.stockquantity }}" value="1">
                             <!-- 아이템 ID를 전송 -->
@@ -207,10 +208,13 @@
             </table>
         </form>
         {% endfor %}
+        <div id="transaction-status">
+            <p>현재 상태: <span id="status-message">대기 중...</span></p>
+            <progress id="progress-bar" value="0" max="100"></progress>
+        </div>
     </div>
 </div>
 
-<!--<img class="overview" src="{% static 'images/overview.png'%}" alt="게임 플로우">-->
 </body>
 
 <form id="price-form">
@@ -269,3 +273,22 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 </script>
 
+<script>
+    function updateStatus(message, progress) {
+        document.getElementById("status-message").innerText = message;
+        document.getElementById("progress-bar").value = progress;
+    }
+
+    // AJAX를 사용하여 서버에서 트랜잭션 상태를 받아오기
+    function fetchTransactionStatus() {
+        setInterval(function() {
+            fetch('/send_transaction_status/')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatus(data.message, data.progress);
+                });
+        }, 1000);  // 1초마다 상태를 갱신
+    }
+
+    fetchTransactionStatus();
+</script>

@@ -12,4 +12,7 @@ urlpatterns = [
     path('buy-item/', buy_item, name='buy-item'),
     path('sell-item/', sell_item, name='sell-item'),
     path('get-sell-price/', get_sell_price, name='get-sell-price'),
+    path('send_transaction_status/', send_transaction_status, name='send_transaction_status'),
+    path('item-create/', create_item, name='item-create'),
+
 ]

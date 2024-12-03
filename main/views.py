@@ -5,6 +5,8 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models import F
 from django.utils import timezone
+from datetime import timedelta
+from django.db import connection
 
 from .models import *
 
@@ -17,8 +19,20 @@ def mainpage(request):
     shop_item_managements = Shopitemmanagement.objects.filter(shop=shop_1)
     transactionhistories = Transactionhistory.objects.all().order_by('-date')[:7]
     data = {}  # 초기 data를 빈 딕셔너리로 설정
-    inventory_sell_data=[]
+    inventory_sell_data = []
     shop_infos = []
+
+    # 날짜를 4일 감소시킨 후 메모리 상에서 정렬
+    transactionhistories = sorted(
+        [history for history in transactionhistories],
+        key=lambda x: x.date - timedelta(days=4),
+        reverse=True
+    )[:7]
+
+    # 날짜를 4일 감소시키기 (1회용)
+    for history in transactionhistories:
+        history.date -= timedelta(days=4)
+        
     # shop_infos 구성
     for shop in shops:
         shop_item_managements = Shopitemmanagement.objects.filter(shop=shop)
@@ -26,6 +40,7 @@ def mainpage(request):
             'shop': shop,
             'shop_item_managements': list(shop_item_managements)
         })
+
     if player_id:
         inventory_items = Inventoryitem.objects.filter(inventory_player=player_id).select_related('item')
         player = Player.objects.get(id=player_id)
@@ -33,28 +48,33 @@ def mainpage(request):
         data.update({
             'inventory_items': inventory_items
         })
+
+        # inventory_sell_data 생성
         for inventory_item in inventory_items:
             for shop in shops:
-                item = Item.objects.get(id=inventory_item.item.id)
-                # 각 상점에 대한 가격 계산 (shopitemmanagement_set에서 첫 번째 항목의 가격을 가져옴)
-                shop_price = Shopitemmanagement.objects.filter(item=item, shop=shop).first()
-                if shop_price:
-                    shop_price = shop_price.price * 0.8  # 0.8 곱한 가격 저장
+                item = inventory_item.item  # inventory_item에서 item 가져오기
+                # 각 상점에 대한 가격 계산 (shopitemmanagement에서 첫 번째 항목의 가격을 가져옴)
+                shop_price_entry = Shopitemmanagement.objects.filter(item=item, shop=shop).first()
+
+                if shop_price_entry:
+                    shop_price = int(round(shop_price_entry.price * 0.8,2))  # 0.8 곱한 가격 저장
+                    inventory_sell_data.append({
+                        'inventory_item': inventory_item,
+                        'shop': shop,
+                        'shop_price': shop_price,
+                    })
                 else:
-                    shop_price = None  # 가격이 없으면 None
-                inventory_sell_data.append({
-                    'inventory_item': inventory_item,
-                    'shop': shop,
-                    'shop_price': shop_price,
-                })
+                    # 가격이 없는 상점은 포함하지 않음
+                    continue
     else:
         data['player'] = None
+
     # data에 shop과 shop_item_managements 추가
     data.update({
         'shop_infos': shop_infos,
         'shop_item_managements': shop_item_managements,
-        'inventory_sell_data':inventory_sell_data,
-        'transactionhistories':transactionhistories
+        'inventory_sell_data': inventory_sell_data,
+        'transactionhistories': transactionhistories
     })
 
     return render(request, 'main/mainpage.html', data)
@@ -116,15 +136,7 @@ def player_custom(request):
         player = Player.objects.get(id=request.session['player_id'])
 
         # 액션에 따라 데이터 수정
-        if action == 'health_inc':
-            player.health += 10
-        elif action == 'health_dec':
-            player.health -= 10
-        elif action == 'level_inc':
-            player.level += 1
-        elif action == 'level_dec':
-            player.level -= 1
-        elif action == 'gold_inc':
+        if action == 'gold_inc':
             player.playercurrency.amount += 10
         elif action == 'gold_dec':
             player.playercurrency.amount -= 10
@@ -134,8 +146,8 @@ def player_custom(request):
         player.playercurrency.save()
 
     return redirect('main:mainpage')
-
-def buy_item(request):
+"""
+def buy_item1(request):
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         quantity = int(request.POST.get(f'quantity_{item_id}', 1))
@@ -192,7 +204,8 @@ def buy_item(request):
                 messages.error(request, "존재하지 않는 아이템입니다.")
 
     return redirect('main:mainpage')
-
+"""
+"""
 def sell_item(request):
     if request.method == 'POST':
         player_id = request.POST.get('player_id')
@@ -253,11 +266,7 @@ def sell_item(request):
 
         return redirect('main:mainpage')  # 판매 후 다시 메인 페이지로 리다이렉트
     return JsonResponse({'error': '잘못된 요청입니다.'}, status=400)
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-
+"""
 def get_sell_price(request):
     item_id = request.GET.get('item_id')
     shop_id = request.GET.get('shop_id')
@@ -270,7 +279,7 @@ def get_sell_price(request):
         shop_item_management = Shopitemmanagement.objects.filter(item=item, shop=shop).first()
         
         if shop_item_management:
-            sell_price = shop_item_management.price * 0.8
+            sell_price = int(round(shop_item_management.price * 0.8, 2))
         else:
             sell_price = None
 
@@ -278,50 +287,260 @@ def get_sell_price(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
-from django.db import connection
+def create_item(request):
+    if request.method == 'POST':
+        # 입력 값 가져오기
+        item_type = request.POST.get('item_type')
+        item_name = request.POST.get('item_name')
+        item_effect = request.POST.get('item_effect')
+        shop_id = request.POST.get('shop_id')
+        base_quantity = request.POST.get('base_quantity')
+        base_price = request.POST.get('base_price')
+        price_fluctuation = request.POST.get('price_fluctuation')
 
-def buy_item(player_id, item_id, quantity, total_cost):
-    try:
+        # SQL 쿼리 실행
         with connection.cursor() as cursor:
-            cursor.execute("""
-                START TRANSACTION;
+            # Item 생성
+            cursor.execute(
+                "INSERT INTO Item (Type, Name, Effect) VALUES (%s, %s, %s)",
+                [item_type, item_name, item_effect]
+            )
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            new_item_id = cursor.fetchone()[0]
 
-                -- 통화 업데이트 (구매 예시: player_id가 1번인 플레이어의 통화에서 500 차감)
-                UPDATE player
-                SET currency = currency - 500
-                WHERE id = 1;
+            # ItemPriceManagement 생성
+            cursor.execute(
+                "INSERT INTO ItemPriceManagement (BaseQuantity, BasePrice, PriceFluctuation) VALUES (%s, %s, %s)",
+                [base_quantity, base_price, price_fluctuation]
+            )
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            price_management_id = cursor.fetchone()[0]
 
-                -- 플레이어 통화가 0보다 작은 경우 롤백
-                IF ROW_COUNT() = 0 OR (SELECT currency FROM player WHERE id = 1) < 0 THEN
-                    ROLLBACK;
-                    SELECT 'Insufficient funds' AS error_message;
-                    LEAVE;
-                END IF;
+            # Price 계산: (base_quantity * base_price) / (base_quantity * price_fluctuation)
+            calculated_price = (int(base_quantity) * int(base_price)) / (int(base_quantity) * float(price_fluctuation))
+            
+            # ShopItemManagement 생성
+            cursor.execute(
+                """
+                INSERT INTO ShopItemManagement (Item_ID, PriceManagement_ID, Shop_ID, StockQuantity, Price) 
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                [new_item_id, price_management_id, shop_id, base_quantity, calculated_price]
+            )
 
-                -- 아이템 수량 업데이트 (구매 시 수량 증가 예시)
-                UPDATE inventoryitem
-                SET quantity = quantity + 3
-                WHERE inventory_player_id = 1 AND item_id = 1;
+        # 성공 메시지
+        messages.success(request, f"아이템 {item_name}가 성공적으로 생성되었습니다. (아이템 ID: {new_item_id})")
 
-                -- 판매 시 수량 검증 및 업데이트 예시 (수량이 부족한 경우 롤백)
-                IF (SELECT quantity FROM inventoryitem WHERE inventory_player_id = 1 AND item_id = 1) < 3 THEN
-                    ROLLBACK;
-                    SELECT 'Insufficient item stock' AS error_message;
-                    LEAVE;
-                END IF;
+    return render(request, 'main/adminpage.html')
 
-                -- 수량이 0이 될 경우 예외 처리
-                IF (SELECT quantity FROM inventoryitem WHERE inventory_player_id = 1 AND item_id = 1) = 0 THEN
-                    ROLLBACK;
-                    SELECT 'Cannot delete item from inventory' AS error_message;
-                    LEAVE;
-                END IF;
+def buy_item(request):
+    if request.method == 'POST':
+        item_id = request.POST.get('item_id')
+        shop_id = request.POST.get('shop_id')
+        quantity = int(request.POST.get(f'quantity_{item_id}', 1))
+        player = Player.objects.get(id=request.session['player_id'])
+        player_id = player.id
 
-                COMMIT;
+        try:
+            # 트랜잭션 시작
+            with connection.cursor() as cursor:
+                cursor.execute("START TRANSACTION;")  # 트랜잭션 시작
+                send_transaction_status(request, "트랜잭션 시작", 10)
 
-                SELECT 'Transaction completed successfully' AS success_message;
+                # 1. 인벤토리 용량 확인
+                cursor.execute("""
+                    SELECT SUM(quantity) 
+                    FROM InventoryItem 
+                    WHERE Inventory_Player_ID = %s
+                """, [player_id])
+                total_quantity = cursor.fetchone()[0] or 0
 
-            """)
-        return {"status": "success", "message": "Purchase completed."}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+                inventory = player.inventory
+                if inventory.capacity < total_quantity + quantity:
+                    messages.error(request, "인벤토리 공간이 부족합니다.")
+                    cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+                    return redirect('main:mainpage')
+
+                # 2. 아이템 가격 및 재고 확인 (여기서 락 추가)
+                cursor.execute("""
+                    SELECT Price, StockQuantity 
+                    FROM ShopItemManagement 
+                    WHERE Item_ID = %s AND Shop_ID = %s
+                    FOR UPDATE  -- 재고에 락을 걸어 다른 트랜잭션이 동시에 수정하지 못하도록 함
+                """, [item_id, shop_id])
+                shop_item_data = cursor.fetchone()
+
+                if shop_item_data is None:
+                    messages.error(request, "존재하지 않는 아이템입니다.")
+                    cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+                    return redirect('main:mainpage')
+
+                price, stockquantity = shop_item_data
+                total_price = price * quantity
+
+                # 3. 플레이어 재화 차감 (보유 재화가 충분한지 확인)
+                cursor.execute("""
+                    SELECT Amount 
+                    FROM PlayerCurrency 
+                    WHERE Player_ID = %s
+                """, [player_id])
+                player_currency = cursor.fetchone()[0]
+
+                if player_currency < total_price:
+                    messages.error(request, "보유 재화가 부족합니다.")
+                    cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+                    return redirect('main:mainpage')
+
+                # 4. 재화 차감
+                cursor.execute("""
+                    UPDATE PlayerCurrency 
+                    SET Amount = Amount - %s 
+                    WHERE Player_ID = %s
+                """, [total_price, player_id])
+
+                # 5. 상점 재고 차감 (재고가 충분한 경우)
+                if stockquantity < quantity:
+                    messages.error(request, "재고가 부족합니다.")
+                    cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+                    return redirect('main:mainpage')
+
+                cursor.execute("""
+                    UPDATE ShopItemManagement 
+                    SET StockQuantity = StockQuantity - %s 
+                    WHERE Item_ID = %s AND Shop_ID = %s
+                """, [quantity, item_id, shop_id])
+
+                # 6. 인벤토리 업데이트 (기존 아이템이 있다면 수량 증가)
+                cursor.execute("""
+                    UPDATE InventoryItem 
+                    SET Quantity = Quantity + %s
+                    WHERE Inventory_Player_ID = %s AND Item_ID = %s
+                """, [quantity, player_id, item_id])
+
+                # 7. 인벤토리 아이템이 없으면 새로 추가
+                if cursor.rowcount == 0:
+                    cursor.execute("""
+                        INSERT INTO InventoryItem (Inventory_Player_ID, Item_ID, Quantity) 
+                        VALUES (%s, %s, %s)
+                    """, [player_id, item_id, quantity])
+                print(shop_id)
+                # 8. 거래 기록 저장
+                cursor.execute("""
+                    INSERT INTO TransactionHistory (Player_ID, Item_ID, Shop, TransactionType, Quantity, Date) 
+                    VALUES (%s, %s, %s, 'buy', %s, NOW())
+                """, [player_id, item_id, shop_id, quantity])
+
+                # 트랜잭션 커밋
+                cursor.execute("COMMIT;")  # 트랜잭션 커밋
+                send_transaction_status(request, "트랜잭션 완료", 100)
+            return redirect('main:mainpage')
+
+        except Exception as e:
+            # 오류가 발생하면 롤백
+            with connection.cursor() as cursor:
+                cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+            messages.error(request, f"오류가 발생했습니다: {str(e)}")
+            return redirect('main:mainpage')
+
+    return redirect('main:mainpage')
+
+def sell_item(request):
+    if request.method == 'POST':
+        player_id = request.POST.get('player_id')
+        item_id = request.POST.get('item_id')
+        shop_id = request.POST.get('shop_id')
+        
+        if int(shop_id) == 0:
+            messages.error(request, f"판매할 상점을 선택하세요.")
+            return redirect('main:mainpage')
+
+        quantity = int(request.POST.get('quantity'))
+        
+        try:
+            # 트랜잭션 시작
+            with connection.cursor() as cursor:
+                cursor.execute("START TRANSACTION;")  # 트랜잭션 시작
+                send_transaction_status(request, "트랜잭션 시작", 10)
+                
+                # 1. InventoryItem에서 플레이어와 아이템 확인
+                cursor.execute("""
+                    SELECT Quantity FROM InventoryItem
+                    WHERE Inventory_Player_ID = %s AND Item_ID = %s
+                    FOR UPDATE
+                """, [player_id, item_id])
+                inventory_item = cursor.fetchone()
+                
+                if not inventory_item:
+                    return JsonResponse({'error': '아이템을 찾을 수 없습니다.'}, status=400)
+                
+                # 2. Shop 확인
+                cursor.execute("SELECT ID FROM Shop WHERE ID = %s", [shop_id])
+                if not cursor.fetchone():
+                    return JsonResponse({'error': '상점을 찾을 수 없습니다.'}, status=400)
+                
+                # 3. ShopItemManagement에서 아이템 가격 확인
+                cursor.execute("""
+                    SELECT Price FROM ShopItemManagement
+                    WHERE Item_ID = %s AND Shop_ID = %s
+                """, [item_id, shop_id])
+                shop_price_entry = cursor.fetchone()
+                
+                if not shop_price_entry:
+                    return JsonResponse({'error': '판매 가격을 찾을 수 없습니다.'}, status=400)
+                
+                shop_price = int(shop_price_entry[0] * 0.8)
+                
+                # 4. PlayerCurrency 업데이트
+                total_price = shop_price * quantity
+                cursor.execute("""
+                    UPDATE PlayerCurrency
+                    SET Amount = Amount + %s
+                    WHERE Player_ID = %s
+                """, [total_price, player_id])
+                
+                # 5. InventoryItem 수량 차감 및 삭제
+                cursor.execute("""
+                    UPDATE InventoryItem
+                    SET Quantity = Quantity - %s
+                    WHERE Inventory_Player_ID = %s AND Item_ID = %s
+                """, [quantity, player_id, item_id])
+
+                cursor.execute("""
+                    DELETE FROM InventoryItem
+                    WHERE Quantity <= 0 AND Inventory_Player_ID = %s AND Item_ID = %s
+                """, [player_id, item_id])
+                
+                # 6. ShopItemManagement 수량 증가 또는 생성
+                cursor.execute("""
+                    UPDATE ShopItemManagement
+                    SET StockQuantity = StockQuantity + %s
+                    WHERE Item_ID = %s AND Shop_ID = %s
+                """, [quantity, item_id, shop_id])
+                
+                # 7. TransactionHistory 기록 추가
+                cursor.execute("""
+                    INSERT INTO TransactionHistory (Player_ID, Item_ID, Shop, TransactionType, Quantity, Date)
+                    VALUES (%s, %s, %s, 'sell', %s, %s)
+                """, [player_id, item_id, shop_id, quantity, timezone.now()])
+
+                # 트랜잭션 커밋
+                cursor.execute("COMMIT;")  # 트랜잭션 커밋
+                send_transaction_status(request, "트랜잭션 완료", 100)
+            return redirect('main:mainpage')
+
+        except Exception as e:
+            # 오류가 발생하면 롤백
+            with connection.cursor() as cursor:
+                cursor.execute("ROLLBACK;")  # 트랜잭션 롤백
+            messages.error(request, f"오류가 발생했습니다: {str(e)}")
+            return redirect('main:mainpage')
+
+    return redirect('main:mainpage')
+
+def send_transaction_status(request, message="", progress=0):
+    # 상태 메시지와 진행률을 JSON 형식으로 반환
+    response_data = {
+        'message': message,
+        'progress': progress  # 진행 상황 (0~100)
+    }
+    return JsonResponse(response_data)
